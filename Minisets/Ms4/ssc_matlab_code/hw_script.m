@@ -15,7 +15,7 @@
 % Returns:
 %       - sensor 1 in the frame of sensor 2
 %       - Jacobian of the transformation
-[X_primeQ1,JminusQ1] = ssc_inverse(x_s1s2)
+[X_primeQ1,JminusQ1] = ssc_inverse(x_s1s2);
 % =========================================================
 
 
@@ -28,10 +28,10 @@
 % Returns:
 %       - sensor 1 in the world frame at time t1
 %       - Jacobian of the transformation
-[X_ws1Q2,JplusQ2] = ssc_head2tail(mu_wr1,x_rs1)
+[X_ws1Q2,JplusQ2] = ssc_head2tail(mu_wr1,x_rs1);
 
 % Get the covariance of s1's pose in world frame at time t1
-P_lcQ2 = JplusQ2*[Sigma_1, zeros(6); zeros(6), zeros(6)]*JplusQ2'
+P_lcQ2 = JplusQ2*[Sigma_1, zeros(6); zeros(6), zeros(6)]*JplusQ2';
 % =========================================================
 
 
@@ -46,10 +46,10 @@ P_lcQ2 = JplusQ2*[Sigma_1, zeros(6); zeros(6), zeros(6)]*JplusQ2'
 % Returns:
 %       - mean pose of sensor 2 in the world frame at time t1
 %       - Jacobian of the transformation
-[X_ws2Q3,JplusQ3] = ssc_head2tail(mu_wr1,ssc_head2tail(x_rs1, X_primeQ1))
+[X_ws2Q3,JplusQ3] = ssc_head2tail(X_ws1Q2,x_s1s2);
 
 % Get the covariance of s2's pose in world frame at time t1
-P_lcQ3 = JplusQ3*[Sigma_1, zeros(6); zeros(6), zeros(6)]*JplusQ3'
+P_lcQ3 = JplusQ3*[P_lcQ2, zeros(6); zeros(6), zeros(6)]*JplusQ3';
 % =========================================================
 
 
@@ -63,8 +63,9 @@ draw_ellipse(mu_wr2, Sigma_2(1:2, 1:2), 9)
 %       - Relative robot pose at time t2 wrt time t1 and plot the
 %               first-order (x,y)^3 sigma confidence ellipse
 [X_r1r2Q4,JQ4] = ssc_tail2tail(mu_wr1, mu_wr2)
-figure;
-draw_ellipse(X_r1r2Q4, Sigma_12(1:2, 1:2), 9)
+
+sigma = JQ4 * [Sigma_1, Sigma_12; Sigma_12.', Sigma_2] * JQ4.'
+draw_ellipse(mu_wr2, sigma(1:2,1:2), 9)
 % =========================================================
 
 
