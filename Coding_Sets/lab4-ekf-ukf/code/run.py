@@ -230,12 +230,12 @@ def main(num, datafile, make_gif = False, watch_speed = 0.3, algorithm="all"):
         if (algorithm in ['all', 'ekf']):
             ekfMu, ekfCov = ekfUpdate(ekfMu, ekfCov, motionCommand, M, z, Q, markerId)
             results['ekf'][t][:3] = ekfMu
-            results['ekf'][t][-3:] = (ekfMu - ground_truth)
+            results['ekf'][t][-3:] = ekfCov.diagonal()
 
-        if (algorithm in ['all', 'ukf']):
-            ukfMu, ukfCov = ukfUpdate(ukfMu, ukfCov, motionCommand, M, z, Q, markerId)
-            results['ukf'][t][:3] = ukfMu
-            results['ukf'][t][-3:] = (ukfMu - ground_truth)
+        # if (algorithm in ['all', 'ukf']):
+        #     ukfMu, ukfCov = ukfUpdate(ukfMu, ukfCov, motionCommand, M, z, Q, markerId)
+        #     results['ukf'][t][:3] = ukfMu
+        #     results['ukf'][t][-3:] = ukfCov.diagonal()
 
         if (algorithm not in ['all', 'ekf', 'ukf', 'pf']):
             raise Exception('Invalid argument for algorithm.  Must be "EKF", "UKF", "PF", or "all", not "' + algorithm + '"')
@@ -253,46 +253,46 @@ def main(num, datafile, make_gif = False, watch_speed = 0.3, algorithm="all"):
         # Make sure to use the colors defined above
         ##############################################
         
-        if (algorithm in ['all', 'ekf']):
-            helpers.plotCov2D(center=ekfMu, cov=ekfCov, nSigma=3, color=ekfColor)
-            plt.plot(results['ekf'][:t, 0], results['ekf'][:t, 1], color=ekfColor, label="EKF")
+        # if (algorithm in ['all', 'ekf']):
+        #     helpers.plotCov2D(center=ekfMu, cov=ekfCov, nSigma=3, color=ekfColor)
+        #     plt.plot(results['ekf'][:t, 0], results['ekf'][:t, 1], color=ekfColor, label="EKF")
 
-        if (algorithm in ['all', 'ukf']):
-            helpers.plotCov2D(center=ukfMu, cov=ukfCov, nSigma=3, color=ukfColor)
-            plt.plot(results['ukf'][:t, 0], results['ukf'][:t, 1], color=ukfColor, label="UKF")
+        # if (algorithm in ['all', 'ukf']):
+        #     helpers.plotCov2D(center=ukfMu, cov=ukfCov, nSigma=3, color=ukfColor)
+        #     plt.plot(results['ukf'][:t, 0], results['ukf'][:t, 1], color=ukfColor, label="UKF")
 
-        if (algorithm not in ['all', 'ekf', 'ukf', 'pf']):
-            raise Exception('Invalid argument for algorithm.  Must be "EKF", "UKF", "PF", or "all", not "' + algorithm + '"')
+        # if (algorithm not in ['all', 'ekf', 'ukf', 'pf']):
+        #     raise Exception('Invalid argument for algorithm.  Must be "EKF", "UKF", "PF", or "all", not "' + algorithm + '"')
 
-        #################################################
-        # Some More Plotting Code (Don't Modify)
-        ################################################
+        # #################################################
+        # # Some More Plotting Code (Don't Modify)
+        # ################################################
 
-        plt.legend()
-        plt.gcf().canvas.draw()
-        if (make_gif):
-            imgData = np.frombuffer(plt.gcf().canvas.tostring_rgb(), dtype=np.uint8)
-            w, h = plt.gcf().canvas.get_width_height()
-            mod = np.sqrt(imgData.shape[0]/(3*w*h)) # multi-sampling of pixels on high-res displays does weird things.
-            im = imgData.reshape((int(h*mod), int(w*mod), -1))
-            gifFrames.append(Image.fromarray(im))
-        time.sleep(watch_speed)
-        plt.gcf().canvas.flush_events()
+        # plt.legend()
+        # plt.gcf().canvas.draw()
+        # if (make_gif):
+        #     imgData = np.frombuffer(plt.gcf().canvas.tostring_rgb(), dtype=np.uint8)
+        #     w, h = plt.gcf().canvas.get_width_height()
+        #     mod = np.sqrt(imgData.shape[0]/(3*w*h)) # multi-sampling of pixels on high-res displays does weird things.
+        #     im = imgData.reshape((int(h*mod), int(w*mod), -1))
+        #     gifFrames.append(Image.fromarray(im))
+        # time.sleep(watch_speed)
+        # plt.gcf().canvas.flush_events()
 
     ##################################################
     # Plotting and Video Code (Don't Modify)
     ##################################################
-    plt.ioff()
-    plt.show(block=False)
+    # plt.ioff()
+    # plt.show(block=False)
 
-    if (make_gif):
-        # Save into a GIF file that loops forever
-        gifFrames[0].save('gifOutput.gif', format='GIF',
-            append_images=gifFrames[1:],
-            save_all=True,
-            duration=num*2*deltaT, loop=1)
+    # if (make_gif):
+    #     # Save into a GIF file that loops forever
+    #     gifFrames[0].save('gifOutput.gif', format='GIF',
+    #         append_images=gifFrames[1:],
+    #         save_all=True,
+    #         duration=num*2*deltaT, loop=1)
 
-    plt.show(block=False)
+    # plt.show(block=False)
 
 
     #########################################################
@@ -300,27 +300,37 @@ def main(num, datafile, make_gif = False, watch_speed = 0.3, algorithm="all"):
     #########################################################
 
     _, ax = plt.subplots(6)
-    _.legend(loc="upper right")
+    x = np.linspace(1,201,200)
+    ekfError = results['ekf'][:, :3] - ground_truth
+    # ukfError = results['ukf'][:, :3] - ground_truth
+    ekfVar = results['ekf'][:, :-3]
+    # ukfVar = results['ukf'][:t, :-3]
 
-    ax[0].plot(results['ekf'][:t, 3], color=ekfColor, label="EKF")
-    ax[0].set_title("EKF Error in X Direction")
-
-    ax[1].plot(results['ekf'][:t, 4], color=ekfColor, label="EKF")
-    ax[1].set_title("EKF Error in Y Direction")
-
-    ax[2].plot(results['ekf'][:t, 5], color=ekfColor, label="EKF")
-    ax[2].set_title("EKF Error in Bearing")
-
-    ax[3].plot(results['ukf'][:t, 3], color=ekfColor, label="UKF")
-    ax[3].set_title("UKF Error in X Direction")
-
-    ax[4].plot(results['ukf'][:t, 4], color=ekfColor, label="UKF")
-    ax[4].set_title("EKF Error in Y Direction")
-
-    ax[5].plot(results['ukf'][:t, 5], color=ekfColor, label="UKF")
-    ax[5].set_title("UKF Error in Bearing")
+    print(ekfVar.shape)
+    print(ekfError.shape)
+    print(x.shape)
 
 
+    ax[0].plot(ekfError[0], color='b', label="EKF Error in X Direction")
+    ax[0].fill_between(x, y1=ekfError[0]+ekfVar[0],y2=ekfError[0]- ekfVar[0], color='r', alpha=0.35)
+    ax[0].legend(loc="upper right")
+
+
+    ax[1].plot(ekfError[1], color='b', label="EKF Error in Y Direction")
+    ax[1].legend(loc="upper right")
+
+    ax[2].plot(ekfError[2], color='b', label="EKF Error in Bearing")
+    ax[2].legend(loc="upper right")
+
+
+    # ax[3].plot(ukfError[0], color='b', label="UKF Error in X Direction")
+    # ax[3].legend(loc="upper right")
+
+    # ax[4].plot(ukfError[1], color='b', label="EKF Error in Y Direction")
+    # ax[4].legend(loc="upper right")
+
+    # ax[5].plot(ukfError[2], color='b', label="UKF Error in Bearing")
+    # ax[5].legend(loc="upper right")
 
     plt.show()
 

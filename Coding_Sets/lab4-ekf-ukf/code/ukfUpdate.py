@@ -122,10 +122,4 @@ def ukfUpdate(mu, Sigma, u, M, z, Q, markerId):
     mu = mu_bar + (K * (z - z_hat)).flatten()
     sigma = sigma_bar - (K @ S @ K.T)
 
-    # print(z_hat)
-    # print(S)
-    # print(sigma_cross)
-    # print(mu)
-    # print(sigma)
-    # raise Error()
     return mu, sigma
