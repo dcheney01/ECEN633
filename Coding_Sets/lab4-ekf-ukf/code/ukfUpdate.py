@@ -42,14 +42,14 @@ def makeSigmaPoints(mu, Sigma):
     n = mu.shape[0]
     alpha = 1
     lamba = alpha**2 * (n+k) - n
-    L =  np.sqrt(n+lamba) * np.linalg.cholesky(Sigma)
+    L = np.linalg.cholesky((n+lamba) * Sigma).T
 
     sigmaPoints = np.zeros((n, 2*n+1))
     sigmaPoints[:,0] = mu.flatten()
     w_m = np.zeros((2*n+1,))
     w_c = np.zeros((2*n+1,))
     w_m[0] = lamba/(n+lamba)
-    w_c[0] = w_m[0] + (1- alpha**2 + beta)
+    w_c[0] = w_m[0] + (1 - alpha**2 + beta)
 
     for i in range(1, 2*n+1):
         if i < n:
@@ -93,7 +93,7 @@ def ukfUpdate(mu, Sigma, u, M, z, Q, markerId):
     sigma_bar = np.zeros((3,3))
     for i in range(15):
         diff = (Xbar_xt[i]-mu_bar).reshape(3,1)
-        sigma_bar += w_c[i] * np.outer(diff,diff)
+        sigma_bar += w_c[i] * diff @ diff.T
 
     #######################################################
     # Correction step 10-18
@@ -102,29 +102,30 @@ def ukfUpdate(mu, Sigma, u, M, z, Q, markerId):
     # 10-13 in Table 7.4
     Z_bar = h(Xbar_xt, (landmark_x,landmark_y)) + X_at1[-1]
     z_hat = w_m.dot(Z_bar)
-    print(z_hat)
 
     S = 0
     for i in range(Z_bar.shape[0]):
         diff = (Z_bar[i]-z_hat)
         S += w_c[i] * diff * diff
 
-    print(S)
+    S = np.array([[S]])
 
     sigma_cross = 0
-    for i in range(15):
+    for i in range(Z_bar.shape[0]):
         diff1 = (Xbar_xt[i]-mu_bar).reshape((3,1))
         diff2 = (Z_bar[i] - z_hat)
         sigma_cross += w_c[i] * diff1 * diff2
 
-    print(sigma_cross)
 
     # UKF Correction Equations 14-16 in Table 7.4
-    K = sigma_cross * (1/S)
+    K = sigma_cross @ np.linalg.inv(S)
     mu = mu_bar + (K * (z - z_hat)).flatten()
-    sigma = sigma_bar - (K @ K.T) * S
+    sigma = sigma_bar - (K @ S @ K.T)
 
-    print(mu)
-    print(sigma)
-    raise Error()
+    # print(z_hat)
+    # print(S)
+    # print(sigma_cross)
+    # print(mu)
+    # print(sigma)
+    # raise Error()
     return mu, sigma
