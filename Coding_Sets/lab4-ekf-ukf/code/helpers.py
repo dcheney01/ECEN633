@@ -48,7 +48,7 @@ def meanAndVariance(samples, numToCount=None):
     Sigma: An array of [s_x, s_y, s_theta] where s_* is the variance for that variable.
     """
     if numToCount is None:
-        numToCoun = len(samples)
+        numToCount = len(samples)
     
     toAverage = samples[:numToCount].copy()
     mu = np.mean(toAverage, axis=0)

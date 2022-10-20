@@ -106,12 +106,11 @@ def main(num, datafile, make_gif = False, watch_speed = 0.3, algorithm="all"):
     #######################################################
     
     # Uncomment and finish these lines
+    ekfMu = initialStateMean
+    ekfCov = np.diag([1, 1, 0.1])
 
-    #ekfMu = 
-    #ekfCov = 
-
-    #ukfMu = 
-    #ukfCov = 
+    ukfMu = initialStateMean
+    ukfCov = np.diag([1, 1, 0.1])
 
     #######################################################
     # Some Plotting Code and Setup
@@ -120,7 +119,6 @@ def main(num, datafile, make_gif = False, watch_speed = 0.3, algorithm="all"):
     gifFrames = []
     
     results = {'ekf':np.zeros((num, 6)), 'ukf':np.zeros((num, 6)), 'pf':[]}
-
 
     ###################################################
     # Call ekfUpdate, ukfUpdate and pfUpdate
@@ -167,6 +165,7 @@ def main(num, datafile, make_gif = False, watch_speed = 0.3, algorithm="all"):
         x = timeData[6]
         y = timeData[7]
         theta = timeData[8]
+        ground_truth = np.array([x, y, theta])
         debugPrint("Ground truth: ", x, y, theta)
 
         # noise-free observation
@@ -199,12 +198,22 @@ def main(num, datafile, make_gif = False, watch_speed = 0.3, algorithm="all"):
         ##################################################################
 
         # Calculate Control Noise Here (Uncomment and Complete)
-        # M = fill this in 
-        # debugPrint("M: ", M)
+        d_rot1 = motionCommand[0]
+        d_trans = motionCommand[1]
+        d_rot2 = motionCommand[2]
+        a1=alphas[0]
+        a2=alphas[1]
+        a3=alphas[2]
+        a4=alphas[3]
+
+        M = np.array([[a1*d_rot1**2 + a2 * d_trans**2,0,0],
+                      [0, a3*d_trans**2 + a4 * (d_rot1**2 + d_rot2**2),0],
+                      [0,0, a1*d_rot2**2 + a2*d_trans**2]])
+        debugPrint("M: ", M)
 
         # Calculate Measurement Noise (Uncomment)
-        # Q = np.array([[beta**2]])
-        # debugPrint("Q: ", Q)
+        Q = np.array([[beta**2]])
+        debugPrint("Q: ", Q)
 
         # Setup Observation/Measurements/IDs?
         z = np.array([[observation[1]]])
@@ -213,25 +222,20 @@ def main(num, datafile, make_gif = False, watch_speed = 0.3, algorithm="all"):
         debugPrint("MarkerID: ", markerId)
         
         # Sample Debug Output Modify/add as needed 
-        #debugPrint("ukfMu: ", ukfMu)
-        #debugPrint("ukfCov: ", ukfCov)
+        # debugPrint("ukfMu: ", ukfMu)
+        # debugPrint("ukfCov: ", ukfCov)
 
         # You'll need to pass the relevant arguments here -
         # commented out until then.            
         if (algorithm in ['all', 'ekf']):
-            #ekfMu, ekfCov = ekfUpdate(()
-            #results['ekf'][t] = 
-            pass
+            ekfMu, ekfCov = ekfUpdate(ekfMu, ekfCov, motionCommand, M, z, Q, markerId)
+            results['ekf'][t][:3] = ekfMu
+            results['ekf'][t][-3:] = (ekfMu - ground_truth)
 
         if (algorithm in ['all', 'ukf']):
-            #ukfMu, ukfCov = ukfUpdate()
-            #results['ukf'][t] = 
-            pass
-
-        if (algorithm in ['all', 'pf']):
-            # pfUpdate()
-            # results['pf'][t] = 
-            pass
+            ukfMu, ukfCov = ukfUpdate(ukfMu, ukfCov, motionCommand, M, z, Q, markerId)
+            results['ukf'][t][:3] = ukfMu
+            results['ukf'][t][-3:] = (ukfMu - ground_truth)
 
         if (algorithm not in ['all', 'ekf', 'ukf', 'pf']):
             raise Exception('Invalid argument for algorithm.  Must be "EKF", "UKF", "PF", or "all", not "' + algorithm + '"')
@@ -250,14 +254,12 @@ def main(num, datafile, make_gif = False, watch_speed = 0.3, algorithm="all"):
         ##############################################
         
         if (algorithm in ['all', 'ekf']):
-
-            pass # this allows the empty block
+            helpers.plotCov2D(center=ekfMu, cov=ekfCov, nSigma=3, color=ekfColor)
+            plt.plot(results['ekf'][:t, 0], results['ekf'][:t, 1], color=ekfColor, label="EKF")
 
         if (algorithm in ['all', 'ukf']):
-            pass # this allows the empty block
-
-        if (algorithm in ['all', 'pf']):
-            pass # this allows the empty block
+            helpers.plotCov2D(center=ukfMu, cov=ukfCov, nSigma=3, color=ukfColor)
+            plt.plot(results['ukf'][:t, 0], results['ukf'][:t, 1], color=ukfColor, label="UKF")
 
         if (algorithm not in ['all', 'ekf', 'ukf', 'pf']):
             raise Exception('Invalid argument for algorithm.  Must be "EKF", "UKF", "PF", or "all", not "' + algorithm + '"')
@@ -297,8 +299,28 @@ def main(num, datafile, make_gif = False, watch_speed = 0.3, algorithm="all"):
     # TODO: Generate Result Plots After Simulation Finishes
     #########################################################
 
+    _, ax = plt.subplots(6)
+    _.legend(loc="upper right")
 
-    
+    ax[0].plot(results['ekf'][:t, 3], color=ekfColor, label="EKF")
+    ax[0].set_title("EKF Error in X Direction")
+
+    ax[1].plot(results['ekf'][:t, 4], color=ekfColor, label="EKF")
+    ax[1].set_title("EKF Error in Y Direction")
+
+    ax[2].plot(results['ekf'][:t, 5], color=ekfColor, label="EKF")
+    ax[2].set_title("EKF Error in Bearing")
+
+    ax[3].plot(results['ukf'][:t, 3], color=ekfColor, label="UKF")
+    ax[3].set_title("UKF Error in X Direction")
+
+    ax[4].plot(results['ukf'][:t, 4], color=ekfColor, label="UKF")
+    ax[4].set_title("EKF Error in Y Direction")
+
+    ax[5].plot(results['ukf'][:t, 5], color=ekfColor, label="UKF")
+    ax[5].set_title("UKF Error in Bearing")
+
+
 
     plt.show()
 
@@ -308,7 +330,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Landmark/Localization Lab")
     parser.add_argument("-g", "--make_gif", action="store_true", help="Whether to save a gif of all the frames")
     # NOTE: Setting the data file as a default left us without a way in the command line to generate new data, so... I made it not default.
-    parser.add_argument("-d", "--datafile", type=str, default=None, help="Location of landmark/localization data. Defaults to none.")
+    parser.add_argument("-d", "--datafile", type=str, default="../data/data.npz", help="Location of landmark/localization data. Defaults to none.")
     parser.add_argument("-a", "--algorithm", type=str, default="all", help="Which algorithm to use.  'EKF', 'UKF', 'PF', or 'all'")
     parser.add_argument("-w", "--watch_speed", type=float, default=0.3, help="Time to pause on each frame when viewing live.")
     parser.add_argument("-n", "--num", type=int, default=None, help="Number of steps to take")
