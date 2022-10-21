@@ -120,6 +120,7 @@ def ukfUpdate(mu, Sigma, u, M, z, Q, markerId):
     # UKF Correction Equations 14-16 in Table 7.4
     K = sigma_cross @ np.linalg.inv(S)
     mu = mu_bar + (K * (z - z_hat)).flatten()
+    mu[2] = helpers.minimizedAngle(mu[2])
     sigma = sigma_bar - (K @ S @ K.T)
 
     return mu, sigma

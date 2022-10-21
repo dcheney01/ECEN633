@@ -262,8 +262,8 @@ def main(num, datafile, make_gif = False, watch_speed = 0.3, algorithm="all"):
             helpers.plotCov2D(center=ukfMu, cov=ukfCov, nSigma=3, color=ukfColor)
             plt.plot(results['ukf'][:t, 0], results['ukf'][:t, 1], color=ukfColor, label="UKF")
 
-        # if (algorithm not in ['all', 'ekf', 'ukf', 'pf']):
-        #     raise Exception('Invalid argument for algorithm.  Must be "EKF", "UKF", "PF", or "all", not "' + algorithm + '"')
+        if (algorithm not in ['all', 'ekf', 'ukf', 'pf']):
+            raise Exception('Invalid argument for algorithm.  Must be "EKF", "UKF", "PF", or "all", not "' + algorithm + '"')
 
         # #################################################
         # # Some More Plotting Code (Don't Modify)
@@ -286,14 +286,14 @@ def main(num, datafile, make_gif = False, watch_speed = 0.3, algorithm="all"):
     plt.ioff()
     plt.show(block=False)
 
-    # if (make_gif):
-    #     # Save into a GIF file that loops forever
-    #     gifFrames[0].save('gifOutput.gif', format='GIF',
-    #         append_images=gifFrames[1:],
-    #         save_all=True,
-    #         duration=num*2*deltaT, loop=1)
+    if (make_gif):
+        # Save into a GIF file that loops forever
+        gifFrames[0].save('gifOutput.gif', format='GIF',
+            append_images=gifFrames[1:],
+            save_all=True,
+            duration=num*2*deltaT, loop=1)
 
-    # plt.show(block=False)
+    plt.show(block=False)
 
 
     #########################################################
@@ -332,7 +332,7 @@ def main(num, datafile, make_gif = False, watch_speed = 0.3, algorithm="all"):
     ax2[1].legend(loc="upper right")
 
     ax2[2].plot(x,ukfError[:,2], color='b', label="UKF Error in Bearing")
-    ax2[2].fill_between(x, y1=ukfError[:,2]+ukfVar[:,2],y2=ukfError[:,2]- ukfVar[:,2], color='r', alpha=0.35)
+    ax2[2].fill_between(x, y1=ukfError[:,2]+ukfVar[:,2],y2=ukfError[:,2] - ukfVar[:,2], color='r', alpha=0.35)
     ax2[2].legend(loc="upper right")
 
     plt.show()
@@ -343,7 +343,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Landmark/Localization Lab")
     parser.add_argument("-g", "--make_gif", action="store_true", help="Whether to save a gif of all the frames")
     # NOTE: Setting the data file as a default left us without a way in the command line to generate new data, so... I made it not default.
-    parser.add_argument("-d", "--datafile", type=str, default="../data/data.npz", help="Location of landmark/localization data. Defaults to none.")
+    parser.add_argument("-d", "--datafile", type=str, default="/home/daniel/Documents/ECEN633/Coding_Sets/lab4-ekf-ukf-localization/data/data.npz", help="Location of landmark/localization data. Defaults to none.")
     parser.add_argument("-a", "--algorithm", type=str, default="all", help="Which algorithm to use.  'EKF', 'UKF', 'PF', or 'all'")
     parser.add_argument("-w", "--watch_speed", type=float, default=0.3, help="Time to pause on each frame when viewing live.")
     parser.add_argument("-n", "--num", type=int, default=None, help="Number of steps to take")

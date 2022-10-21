@@ -81,5 +81,7 @@ def ekfUpdate(mu_t1, Sigma_t1, u, M, z, Q, markerId):
     mu = mu_bar + (K @ (z - z_hat)).T
     sigma = (np.eye(3) - K @ H) @ sigma_bar
 
+    mu[:,2] = helpers.minimizedAngle(mu[:,2])
+
     #######################################################
     return mu.flatten(), sigma
