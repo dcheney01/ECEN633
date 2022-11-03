@@ -254,7 +254,7 @@ def predict(mu, Sigma, u, M):
     angle = helpers.minimizedAngle(mu[2]+d_rot1)
 
     # Find Jacobians
-    # F is a matrix that maps the 3-D state vector into a vector that is 3N+3 where N is the number of landmarks
+    # F is a matrix that maps the 3-D state vector into a higher dimension vector to account for landmarks
     F = np.block([np.eye(3), np.zeros((3,2*N))])
 
     # G is the derivative of the motion model with respect to the previous state and current u
@@ -301,12 +301,12 @@ def update(mu_bar, Sigma_bar, association, H, Q, innovation, z, updateMethod):
         H = np.vstack((H[0], H[1]))
         Q = np.block([[Q, np.zeros(Q.shape)],
                       [np.zeros(Q.shape), Q]])
-        z_hat = innovation.squeeze()
+        innovation = innovation.reshape((2*z.shape[0],1))
 
         print(f"H shape is: {H.shape}")
         print(f"Q shape is: {Q.shape}")
+        print(f"innovation shape is: {innovation.shape}")
         print(f"Sigma_bar shape is: {Sigma_bar.shape}")
-        print(f"z_hat shape is: {z_hat.shape}")
 
         S = H @ Sigma_bar @ H.T + Q
         K = Sigma_bar @ H.T @ np.linalg.inv(S)
@@ -314,8 +314,8 @@ def update(mu_bar, Sigma_bar, association, H, Q, innovation, z, updateMethod):
         print(f"S shape should be 4x4: {S.shape}")
         print(f"K shape should be {3+len(association)*2}x{2*z.shape[0]}: {K.shape}")
 
-        mu = mu_bar + K @ (z_hat - z[:, :2])
-        Sigma = (np.eye((3,3)) - K @ H) @ Sigma_bar
+        mu = mu_bar + K @ (innovation)
+        Sigma = (np.eye(K.shape[0]) - K @ H) @ Sigma_bar
     else:
         raise Exception("Unknown update method, '" + updateMethod + "' - it must be 'seq' or 'batch'")
     
