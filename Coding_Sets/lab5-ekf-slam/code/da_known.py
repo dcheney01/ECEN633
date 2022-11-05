@@ -14,9 +14,7 @@ import helpers
 #  - R covariance matrix
 #  - Curren state estimate (mu, Sigma)
 #  - Landmark signatures (only available for use in da_known)
-#  - Short circuit threshhold may be helpful for use in jcbb, not needed in the other algorithms
-    # Short circuit threshhold is used in jcbb, not implemented here
-def associateData(measurements, R, mu, Sigma, landmarkSignatures = [], shortCircuitThresh = 40.0**2):
+def associateData(measurements, R, mu, Sigma, landmarkSignatures = []):
     association = [] # Each index of this will hold the index of the landmark in the state.
     innovation = [] # Indexed the same as the above, this is used in the update step
     H = [] # Indexed the same as the above, this is used in the update step
@@ -29,20 +27,28 @@ def associateData(measurements, R, mu, Sigma, landmarkSignatures = [], shortCirc
             association.append(ind) # And make sure we return that
 
             # Innovation + Jacobian
-            range_hat, bearing_hat, Hi = h(mu, ind, len(landmarkSignatures))
-            
-            innovation.append(np.array([[dist - range_hat], [bearing-bearing_hat]]))
-            H.append(Hi)
+            dist_hat, bearing_hat, Hi = h(mu, ind, len(landmarkSignatures))
+            inno = np.array([dist - dist_hat, helpers.minimizedAngle(bearing-bearing_hat)])
+
+            if len(innovation) < 1:
+                innovation = inno
+                H = Hi
+            else:
+                innovation = np.hstack((innovation, inno))
+                H = np.vstack((H, Hi))
 
         else: # If the landmark signature (markerID) HASN'T been seen yet, we need to create a new landmark
             association.append(-1) # We say the association is "-1" to tell future code to add new landmarks
-            innovation.append([0, 0]) # We won't use the innovation anyway, but we need to return SOMETHING
-            H.append(np.zeros((2, len(mu)))) # Same for our H jacobian
+            if len(innovation) < 1:
+                innovation = np.array([0, 0])
+                H = np.zeros((2, len(mu)))
+            else:
+                innovation = np.hstack((innovation, np.array([0, 0]))) # We won't use the innovation anyway, but we need to return SOMETHING
+                H = np.vstack((H, np.zeros((2, len(mu))))) # Same for our H jacobian
 
-    return np.array(association), np.array(H), np.array(innovation)
+    return np.array(association), H, innovation
 
 def h(mu, ind, N):
-
     x, y, theta = mu[:3]
     landmark_ind = 2*ind + 3
     landmark_x, landmark_y = mu[landmark_ind: landmark_ind+2]
@@ -53,8 +59,8 @@ def h(mu, ind, N):
     Sy = Delta[1]
 
     # range_hat and bearing_hat
-    range_hat = np.sqrt(q)
-    bearing_hat = helpers.minimizedAngle(np.arctan2(Sy - y, Sx - x) - theta)
+    dist_hat = np.sqrt(q)
+    bearing_hat = helpers.minimizedAngle(np.arctan2(Sy, Sx) - theta)
 
     # Jacobian
     # Helper matrix that maps the low-dimensional matrix h_i
@@ -62,10 +68,10 @@ def h(mu, ind, N):
     second = np.block([[np.zeros((3,2))], [np.eye(2)]])
     F = np.block([first, np.zeros((5, 2*ind)), second, np.zeros((5, 2*N - 2*(ind+1)))]) 
 
-    Hi = (1/q) * np.array([[-np.sqrt(q)*Sx, -np.sqrt(q)*Sy, 0,  np.sqrt(q)*Sx, np.sqrt(q)*Sy],
+    Hi = (1/q) * np.array([[-np.sqrt(q)*Sx, -np.sqrt(q)*Sy,  0,  np.sqrt(q)*Sx, np.sqrt(q)*Sy],
                             [Sy,             -Sx,           -q, -Sy,            Sx]]) @ F
 
     # print(f"F shape is: {F.shape}")
     # print(f"Hi shape is: {Hi.shape}")
 
-    return range_hat, bearing_hat, Hi
+    return dist_hat, bearing_hat, Hi

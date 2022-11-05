@@ -5,6 +5,7 @@ import time
 from fieldSettings import field
 import helpers
 import matplotlib
+from scipy.linalg import block_diag
 
 np.set_printoptions(formatter={'float': lambda x: "{0:0.3f}".format(x)})
 
@@ -20,16 +21,14 @@ plt.rcParams["figure.figsize"] = (4 * dpi/80, 4 * dpi/80) # size of plots, set t
 helpers.printDebug = False 
 from helpers import debugPrint
 
-def run(numSteps, dataAssociation, updateMethod, pauseLen, makeGif):
-
+def run(numSteps, dataAssociation, updateMethod, pauseLen, make_gif):
     # Video/GIF generation
-    printNumLength = len(str(numSteps)) # Used to name gif images properly
-    if (makeGif): # If we're going to be making a gif/video of the output,
+    if (make_gif): # If we're going to be making a gif/video of the output,
         from PIL import Image # we need PIL to do so
 
     # initialize and settings
     initialStateMean = np.array([180, 50, 0]) # initial state, [x, y, theta]
-    maxObs = 2 # The maximum number of features that will be observed at any timestep
+    maxObs = 3 # The maximum number of features that will be observed at any timestep
     alphas = np.array([0.05, 0.001, 0.05, 0.01])**2 # These have to do with the error in our motion controls
     betas = np.array([10, 10*np.pi/180]) # Error in observations
     R = np.diag(betas**2)
@@ -62,8 +61,13 @@ def run(numSteps, dataAssociation, updateMethod, pauseLen, makeGif):
     muHist = np.zeros((numSteps, 2)) # Tracking the position of the robot over time for plotting
 
     plt.ion() # Interacting plotting so we can SEE it doing its thing
+    gifFrames = []
+    correlation_coefficients_landmarks = np.zeros((1, numSteps))
+    correlation_coefficients_lxr = np.zeros((2, numSteps))
+    covariance_determinant = np.zeros((1,numSteps))
+        
     for t in range(numSteps): # We'll run our algorithm for each step of data
-        print("Running step ", t, " currently have ", int((len(realRobot)-3)/2), " landmarks ") # Not necessary, just nice to see.
+        # print("Running step ", t, " currently have ", int((len(realRobot)-3)/2), " landmarks ") # Not necessary, just nice to see.
             
         #=================================================
         # Data available to your filter at this time step
@@ -94,10 +98,13 @@ def run(numSteps, dataAssociation, updateMethod, pauseLen, makeGif):
         
         # Call your predict function
         # TODO: Implement the predict function defined below
-        print(f"Robot State: {realRobot}")
-        print(f"Command: {u}")
         realRobot_bar, realCov_bar = predict(realRobot, realCov, u, M)
-        print(f"robot state after predict: {realRobot_bar}")
+        
+        # print(f"Robot State: {realRobot}")
+        # print(f"Command: {u}")
+        # print(f"robot state after predict: {realRobot_bar}")
+        # print(f"landmarkSignatures are: {landmarkSignatures}")
+        # print()
 
         #=================================================
         # Update based on Measurements
@@ -115,42 +122,49 @@ def run(numSteps, dataAssociation, updateMethod, pauseLen, makeGif):
                 landmarkAssociationHistory[trueId][associatedTo] = landmarkAssociationHistory[trueId][associatedTo] + 1
 
             #########################################################
-            # TODO: Here you should call the update and augmentState functions
-            # Commented out until implemented
-            
             # Update your state for landmarks already observed
             realRobot, realCov = update(realRobot_bar, realCov_bar, association, H, R, innovation, z, updateMethod) 
-            # print(f"robot state after update: {realRobot}")
-            # print(f"robot covariance after update:\n{realCov}")
 
             # Augment our state with new landmarks that were not associated
             realRobot, realCov, landmarkSignatures = augmentState(association, z, realRobot, realCov, R, landmarkSignatures)
-            # print()
-            # print(f"robot state after augment: {realRobot}")
-            # print(f"robot covariance after augment:\n{realCov}")
 
-            # Comment this out after you implement and un comment the above two function calls
-            # realRobot = realRobot_bar
-            # realCov = realCov_bar
-            
         #=================================================
         #TODO: plot and evaluate filter results here
         #=================================================
         muHist[t] = realRobot[:2] # Track the position of the robot over time
     
+        n = (len(realRobot)-3)//2
+        if n > 1:
+            sigma_x1xr = realCov[0, 3]
+            sigma_x2xr = realCov[0, 5]
+            sigma_x1x2 = realCov[3, 5]
+
+            sigma_xrxr = realCov[0,0]
+            sigma_x1x1 = realCov[3,3]
+            sigma_x2x2 = realCov[5,5]
+
+            rho_x1xr = sigma_x1xr / np.sqrt(sigma_x1x1*sigma_xrxr)
+            rho_x2xr = sigma_x2xr / np.sqrt(sigma_x2x2*sigma_xrxr)
+            correlation_coefficients_lxr[:,t] = np.array([rho_x1xr, rho_x2xr])
+
+            correlation_coefficients_landmarks[:,t] = sigma_x1x2 / np.sqrt(sigma_x1x1*sigma_x2x2)
+
+            covariance_determinant[:,t] = np.linalg.det(realCov[3:,3:])
+
+
         plotsim(data, t, initialStateMean, realRobot, realCov, muHist); # Plot the state as it is after the timestep
         plt.legend()        
         plt.gcf().canvas.draw() # Tell the canvas to draw, interactive mode is weird
         if pauseLen > 0: # If we've got a pauselen, let's take a break so it doesn't blur past
             time.sleep(pauseLen)
 
-        # Save GIV Data
-        if (makeGif): # If we're saving to make a video, let's put the current frame into a saved image for later processing.
-            imgData = np.frombuffer(plt.gcf().canvas.tostring_rgb(), dtype=np.uint8) # Extra image data from the plot
-            w, h = plt.gcf().canvas.get_width_height() # Determine the dimensions
-            mod = np.sqrt(imgData.shape[0]/(3*w*h)) # multi-sampling of pixels on high-res displays does weird things, account for it.
-            im = imgData.reshape((int(h*mod), int(w*mod), -1)) # Create our image array in the right shape
-            Image.fromarray(im).save("outputGif/sim_" + str(t).zfill(printNumLength) + ".png") # And pass it to PIL to save it.
+        # Save GIF Data
+        if (make_gif):
+            imgData = np.frombuffer(plt.gcf().canvas.tostring_rgb(), dtype=np.uint8)
+            w, h = plt.gcf().canvas.get_width_height()
+            mod = np.sqrt(imgData.shape[0]/(3*w*h)) # multi-sampling of pixels on high-res displays does weird things.
+            im = imgData.reshape((int(h*mod), int(w*mod), -1))
+            gifFrames.append(Image.fromarray(im))
 
         # Make sure the canvas is ready to go for the next step
         plt.gcf().canvas.flush_events() 
@@ -163,23 +177,40 @@ def run(numSteps, dataAssociation, updateMethod, pauseLen, makeGif):
     np.savez("nnAssociation.npz", associationHistory=landmarkAssociationHistory)
 
     # GIF Plotting
-    if (makeGif):
-        import glob # Need this to load photos (better than holding them in RAM forever)
-        # Create the frames
-        frames = [] # This holds each image
-        imgs = glob.glob("outputGif/sim_*.png") # load 'em in
-        imgs.sort() # Make sure they're in the right order
-        for i in imgs: # For each one, we'll open and append
-            new_frame = Image.open(i)
-            frames.append(new_frame)
-        
+    if (make_gif):
         # Save into a GIF file that loops forever
-        frames[0].save('outputGif/output.gif', format='GIF',
-                       append_images=frames[1:],
-                       save_all=True,
-                       duration=len(imgs)*0.05, loop=1)
-    plt.show() # And just show the last image
-    
+        gifFrames[0].save('video_task2.gif', format='GIF',
+        append_images=gifFrames[1:],
+        save_all=True,
+        duration=numSteps*2*0.1, loop=1)
+    plt.show(block=False) # And just show the last image
+
+
+
+    # For Task 2
+    plt.figure()
+    plt.imshow(landmarkAssociationHistory[:8,:8], cmap='BuPu')
+    plt.xlabel("True ID")
+    plt.ylabel("Associated Landmark")
+    plt.show()
+
+
+
+    # For Task 1
+    # fig, ax = plt.subplots(3)
+
+    # ax[0].plot(np.arange(numSteps), correlation_coefficients_lxr[0,:], label="Landmark1")
+    # ax[0].plot(np.arange(numSteps), correlation_coefficients_lxr[1,:], label="Landmark2")
+    # ax[0].legend(loc="upper right")
+
+    # ax[1].plot(np.arange(numSteps), correlation_coefficients_landmarks.flatten(), label="Correlation Coefficient between Landmarks")
+    # ax[1].legend(loc="upper right")
+
+    # ax[2].plot(np.arange(numSteps), covariance_determinant.flatten(), label="Covariance Determinant")
+    # ax[2].legend(loc="upper right")
+
+    plt.show()
+
 #==========================================================================
 # Pretty drawing stuff
 #==========================================================================
@@ -242,43 +273,39 @@ def plotsim(data, t, initialStateMean, mu, Sigma, muHist):
 # TODO: Implement the Motion Prediction Equations
 ##################################################
 def predict(mu, Sigma, u, M):
-    # print(f"inital mu: {mu}")
-    # print(f"initial cov: \n{Sigma}")
-    # print(f"initial u: {u}")
-
-    # Propogate Jacobian
     N = (mu.shape[0]-3)//2 # Get number of known landmarks
     d_rot1 = u[0]
     d_trans = u[1]
     d_rot2 = u[2]
     angle = helpers.minimizedAngle(mu[2]+d_rot1)
 
-    # Find Jacobians
-    # F is a matrix that maps the 3-D state vector into a higher dimension vector to account for landmarks
-    F = np.block([np.eye(3), np.zeros((3,2*N))])
-
-    # G is the derivative of the motion model with respect to the previous state and current u
-    G =  np.eye(3 + 2*N) + F.T @ np.array([[1, 0, -d_trans*np.sin(angle)], 
-                                           [0, 1, d_trans*np.cos(angle)],
-                                           [0, 0, 1]]) @ F
-
-    # print(f"F: \n{F}\n")
-    # print(f"G: \n{G}\n")
-    # print(f"M: \n{M}\n")
-
-    # Change in position
+    # Motion Model
     x_prime = d_trans*np.cos(angle)
     y_prime = d_trans*np.sin(angle)
     theta_prime = d_rot1+d_rot2
 
+    # Find Jacobians
+    # F is a matrix that maps the 3-D state vector into a higher dimension vector to account for landmarks
+    F = np.block([np.eye(3), np.zeros((3,2*N))])
+
+    # G is the derivative of the motion model with respect to the previous state
+    G =  np.eye(3 + 2*N) + F.T @ np.array([[0, 0, -d_trans*np.sin(angle)], 
+                                           [0, 0, d_trans*np.cos(angle)],
+                                           [0, 0, 0]]) @ F
+    # R is the derivative of the motion model with respect to the command
+    R = np.array([[-d_trans*np.sin(angle), np.cos(angle), 0], 
+                  [d_trans*np.cos(angle), np.sin(angle), 0],
+                  [1, 0, 1]])                               
+
+    # print(f"F: \n{F}\n")
+    # print(f"G: \n{G}\n")
+
     # Update Mean and Covariance (Handle both Robot State and Landmarks)
     mu_bar = mu + F.T @ np.array([x_prime, y_prime, theta_prime])
-    Sigma_bar = (G @ Sigma @ G.T) + (F.T @ M @ F)
+    Sigma_bar = (G @ Sigma @ G.T) + (F.T @ (R @ M @ R.T) @ F)
 
-    # print()
     # print(f"final mu: {mu_bar}")
     # print(f"final cov: \n{Sigma_bar}")
-    # assert False
     
     return mu_bar, Sigma_bar # And give them back to the calling function
 
@@ -292,43 +319,48 @@ def update(mu_bar, Sigma_bar, association, H, Q, innovation, z, updateMethod):
         return mu_bar, Sigma_bar
 
     if (updateMethod == "seq"): 
-        print("seq method not implemented")
         for i in ind: 
-            # TODO: Finish This to update incrementally for each measurement
-            pass # To enable running until implemented
-    elif (updateMethod == "batch"): 
-        # TODO: Finish This to update all measurements of a time step at once
-        H = np.vstack((H[0], H[1]))
-        Q = np.block([[Q, np.zeros(Q.shape)],
-                      [np.zeros(Q.shape), Q]])
-        innovation = innovation.reshape((2*z.shape[0],1))
+            H_i = H[(2*i):(2*i)+2,:]
+            innovation_i = innovation[2*i:2*i+2]
+            # print(f"H_i shape: {H_i.shape}")
+            # print(f"innovation_i shape is {innovation_i.shape}")
 
-        print(f"H shape is: {H.shape}")
-        print(f"Q shape is: {Q.shape}")
-        print(f"innovation shape is: {innovation.shape}")
-        print(f"Sigma_bar shape is: {Sigma_bar.shape}")
+            S_i = H_i @ Sigma_bar @ H_i.T + Q
+            K_i = Sigma_bar @ H_i.T @ np.linalg.inv(S_i)
+
+            # print(f"K_i shape: {K_i.shape}")
+            mu_bar += K_i @ innovation_i
+            Sigma_bar = (np.eye(K_i.shape[0]) - K_i @ H_i) @ Sigma_bar
+        mu = mu_bar
+        Sigma = Sigma_bar
+
+    elif (updateMethod == "batch"): 
+        Q = block_diag(*[Q]*len(association))
+
+        # print(f"H shape is: {H.shape}")
+        # print(f"Q shape is: {Q.shape}")
+        # print(f"innovation shape is: {innovation.shape}")
+        # print(f"Sigma_bar shape is: {Sigma_bar.shape}")
+        # print(f"mu_bar has shape: {mu_bar.shape}")
 
         S = H @ Sigma_bar @ H.T + Q
         K = Sigma_bar @ H.T @ np.linalg.inv(S)
 
-        print(f"S shape should be 4x4: {S.shape}")
-        print(f"K shape should be {3+len(association)*2}x{2*z.shape[0]}: {K.shape}")
+        # print(f"S shape should be 4x4: {S.shape}")
+        # print(f"K shape should be {3+len(association)*2}x{2*z.shape[0]}: {K.shape}")
 
         mu = mu_bar + K @ (innovation)
         Sigma = (np.eye(K.shape[0]) - K @ H) @ Sigma_bar
+
+        # print(f"mu has shape: {mu.shape} and is: \n{mu}")
+        # print(f"Sigma has shape: {Sigma.shape} and is: \n{Sigma}")
+
     else:
         raise Exception("Unknown update method, '" + updateMethod + "' - it must be 'seq' or 'batch'")
-    
+
     return mu, Sigma
 
 ##################################
-
-# takes measurement + robots pose and gives landmark position
-def g(dist, bearing, x, y, theta):
-    l_x = dist * np.cos(bearing + theta) + x
-    l_y = dist * np.sin(bearing + theta) + y
-    return np.array([l_x, l_y])
-
 # TODO: Implement Augment State
 ##################################
 def augmentState(association, measurements, mu, Sigma, Q, landmarkSignatures):
@@ -339,58 +371,42 @@ def augmentState(association, measurements, mu, Sigma, Q, landmarkSignatures):
 
     # For each measurement of a new landmark update your state
     for z in measurements:
-        # print()
-        # print("AUGMENTING STATE WITH ANOTHER LANDMARK")
         N = (mu.shape[0] - 3) // 2 # Number of landmarks currently in the state
 
         # Extract info from the measurement
         dist, bearing, sig = z
+        alpha = helpers.minimizedAngle(bearing+theta)
         # Update the signatures so we know what landmark index goes to what signature.  Only used for da_known
         landmarkSignatures = np.array([*landmarkSignatures, sig])
 
         # Update both the mean (mu_l) and 
         # covariance (Sigma_lr, Sigma_rl, Sigma_Ll, Sigma_lL, Sigma_ll) for the new landmark.
-        mu = np.concatenate((mu, g(dist, bearing, x, y, theta)))
+        l_x = dist * np.cos(alpha) + x
+        l_y = dist * np.sin(alpha) + y
+        mu = np.concatenate((mu, [l_x, l_y]))
 
-        G_r = np.array([[1, 0, -dist*np.sin(bearing + theta)], 
-                        [0, 1,  dist*np.cos(bearing + theta)]])
-        G_delta = np.array([[1, 0],
-                            [0, 1]])
+        G_r = np.array([[1, 0, -dist*np.sin(alpha)], 
+                        [0, 1,  dist*np.cos(alpha)]])
+        G_delta = np.array([[np.cos(alpha), -dist*np.sin(alpha)],
+                            [np.sin(alpha), dist*np.cos(alpha)]])
 
         Sigma_lr = G_r @ Sigma_rr
         Sigma_ll = G_r @ Sigma_rr @ G_r.T + G_delta @ Q @ G_delta.T
+
+        Sigma_rL = Sigma[:3, 3:2*N+3]
+        Sigma_LL = Sigma[3:2*N+3, 3:2*N+3]
+        Sigma_lL = G_r @ Sigma_rL
+
         # print(f"Sigma_lr shape should be 2x3: {Sigma_lr.shape}")
         # print(f"Sigma_ll shape should be 2x2: {Sigma_ll.shape}")
+        # print(f"Sigma_rL shape should be 3x{2*(N)}: {Sigma_rL.shape}")
+        # print(f"Sigma_lL shape should be 2x{2*(N)}: {Sigma_lL.shape}")
 
-        if N < 1:
-            # print(f"No Previous Landmarks, N = {N}")
-            Sigma = np.block([[Sigma,      Sigma_lr.T],
-                              [Sigma_lr,   Sigma_ll]])
-            # print(f"Sigma shape should be {3+2*(N+1)}x{3+2*(N+1)}: {Sigma.shape}")
+        Sigma = np.block([
+            [Sigma_rr, Sigma_rL, Sigma_lr.T],
+            [Sigma_rL.T, Sigma_LL, Sigma_lL.T],
+            [Sigma_lr, Sigma_lL, Sigma_ll]
+        ])
 
-        else:
-            Sigma_rL = Sigma[:3, 3:]
-            Sigma_lL = G_r @ Sigma_rL
-
-            # print(f"Sigma_rL shape should be 3x{2*(N)}: {Sigma_rL.shape}")
-            # print(f"Sigma_lL shape should be 2x{2*(N)}: {Sigma_lL.shape}")
-
-            # Sigma = np.block([[Sigma,      Sigma_rL, Sigma_lr.T],
-            #                   [Sigma_rL.T, Sigma_LL, Sigma_lL.T],
-            #                   [Sigma_lr,   Sigma_lL, Sigma_ll]])
-
-            Sigma_new = np.zeros((3+2*(N+1), 3+2*(N+1)))
-            Sigma_new[:(3+2*N), :(3+2*N)] = Sigma
-
-            Sigma_new[-2:, :3] = Sigma_lr
-            Sigma_new[:3, -2:] = Sigma_lr.T
-
-            Sigma_new[-2:, 3:3+2*N] = Sigma_lL
-            Sigma_new[3:3+2*N, -2:] = Sigma_lL.T
-
-            Sigma_new[-2:, -2:] = Sigma_ll
-            Sigma = Sigma_new
-
-            # print(f"Sigma shape should be {3+2*(N+1)} x {3+2*(N+1)}: {Sigma.shape}")
-
+    # print(f"Sigma shape should be {3+2*(N+1)} x {3+2*(N+1)}: {Sigma.shape}")
     return mu, Sigma, landmarkSignatures

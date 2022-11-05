@@ -40,7 +40,7 @@ if __name__ == "__main__":
     parser.add_argument("-t", "--dataType", type=str, default=None, required=True, help="Which type of data? 'sim' or 'vp'")
     parser.add_argument("-u", "--updateMethod", type=str, default="batch", help="Which update type to use? 'batch' or 'seq'")
     parser.add_argument("-d", "--dataAssociation", type=str, default=None, required=True, help="Which data association method to use? 'known', 'nn', 'nndg', or 'jcbb'")    
-    parser.add_argument("-w", "--pauseLen", type=float, default=0.1, help="Time to pause on each frame when viewing live.")
+    parser.add_argument("-w", "--pauseLen", type=float, default=0.001, help="Time to pause on each frame when viewing live.")
     parser.add_argument("-n", "--numSteps", type=int, default=None, required=True, help="Number of steps to take")
     args = vars(parser.parse_args())
 

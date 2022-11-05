@@ -5,6 +5,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import helpers
 from helpers import debugPrint
+from scipy.linalg import block_diag
 
 import matplotlib
 matplotlib.use("Qt5Agg") # this might be necessary on MacOS for live plotting, dunno what it'll do on other systems
@@ -16,9 +17,8 @@ from detectTrees import detectTrees
 
 laserThresh = 25.0 # This is a laser threshold, it's used to discard some of the measurements - I found the algorithm was MUCH more successful when I did so.
 
-def run(numSteps, dataAssociation, updateMethod, pauseLen, makeGif):
-    printNumLength = len(str(numSteps)) # Used to name gif images properly
-    if (makeGif): # If we're going to be making a gif/video of the output,
+def run(numSteps, dataAssociation, updateMethod, pauseLen, make_gif):
+    if (make_gif): # If we're going to be making a gif/video of the output,
         from PIL import Image # we need PIL to do so
 
     #===================================================        
@@ -29,6 +29,9 @@ def run(numSteps, dataAssociation, updateMethod, pauseLen, makeGif):
     # laser - [time, readings]
     # control - [time, speed, steering]
     globals().update(vpData) # this turns vpData['control'] into a global labeled 'control', etc...
+    # control = vpData['control']
+    # laser = vpData['laser']
+    # gps = vpData['gps']
 
     # For ease of the algorithm below, we'll just define our "dataAssociation" function now by importing
     if (dataAssociation == "known"):
@@ -68,15 +71,20 @@ def run(numSteps, dataAssociation, updateMethod, pauseLen, makeGif):
     robotPath[:,0] = mu[:2] # and we know where we start
 
     plt.ion() # interactive plotting so we can see it as it goes.  Might make sense to add an option to turn this off for speed, but... I'm not gunna.  Wanna see if it diverges.
+    gifFrames = []
 
     print("Running Victoria Park data for until:", toRun) # Just a nice printout so we know what to expect
 
     ##############################################
     # Main Iteration Loop
     ##############################################
+    prediction_time = []
+    update_time = []
+    num_landmarks = []
     for k in range(toRun): # Now we begin running through the data
-        print("Running step ", k, " currently have ", int((len(mu)-3)/2), " landmarks ") # nice to know when watching, good for estimating calc duration
+        # print("Running step ", k, " currently have ", int((len(mu)-3)/2), " landmarks ") # nice to know when watching, good for estimating calc duration
         didUpdate = False
+        prediction_tmp = 0
         while (control[controlIndex, 0] < laser[k, 0]): # As long as the time for the "control" data is less than the next step of "observation" data...
             dt = control[controlIndex, 0] - t # find how long since the last control
             t = control[controlIndex, 0] # update the "last control" variable so we can do that again next time
@@ -86,9 +94,13 @@ def run(numSteps, dataAssociation, updateMethod, pauseLen, makeGif):
             # EKF Prediction Step
             ##################################
             # TODO: Implement this function below
+            start = time.time()
             mu, Sigma = predict(mu, Sigma, u, dt, Qu, Qf) # predict our movement based on our model (function is in this file)
-
+            end = time.time()
+            prediction_tmp += end - start
             controlIndex += 1 # and update our "control index" so we know what data we've already looked at and processed
+        
+        prediction_time.append(prediction_tmp)
 
             
         robotPath[:,k+1] = mu[:2] # track our robot path based on the controls we've received to this point
@@ -108,16 +120,20 @@ def run(numSteps, dataAssociation, updateMethod, pauseLen, makeGif):
         ##########################
         # Call Data Association
         ##########################
-        association, H, innovation = associateData(z, R, mu, Sigma, shortCircuitThresh=(laserThresh+10)**2) # Get our association - and data for the update
+        association, H, innovation = associateData(z, R, mu, Sigma) # Get our association - and data for the update
         # In the above, 'short circuit threshold' says 'don't bother trying to associate to landmarks further away from the robot than this' since they're very unlikely.
 
         ###########################
         # Measurement Update
         ###########################
         # TODO: Implement this function below and uncomment this line
-        # mu, Sigma = update(mu, Sigma, association, H, R, innovation, updateMethod) # Update based on our association - correction step
+        start = time.time()
+        mu, Sigma = update(mu, Sigma, association, H, R, innovation, updateMethod) # Update based on our association - correction step
+        end = time.time()
+        update_time.append(end - start)
+        num_landmarks.append((len(mu)-3)/2)
         # TODO: Implement this function below and uncomment this line
-        # mu, Sigma = augmentState(association, z, mu, Sigma, R) # and if we have any measurements that represent new landmarks, add those into the state
+        mu, Sigma = augmentState(association, z, mu, Sigma, R) # and if we have any measurements that represent new landmarks, add those into the state
 
 
         ############################
@@ -127,12 +143,13 @@ def run(numSteps, dataAssociation, updateMethod, pauseLen, makeGif):
         plt.gcf().canvas.draw() # interactive plotting is weird, but force it to execute here
         if pauseLen > 0: # If we have a pauselen (don't recommend)
             time.sleep(pauseLen) # we'll pause here so the frames don't blur by too fast (NOT LIKELY)
-        if (makeGif): # If we're saving to make a video, let's put the current frame into a saved image for later processing.
-            imgData = np.frombuffer(plt.gcf().canvas.tostring_rgb(), dtype=np.uint8) # Extra image data from the plot
-            w, h = plt.gcf().canvas.get_width_height() # Determine the dimensions
-            mod = np.sqrt(imgData.shape[0]/(3*w*h)) # multi-sampling of pixels on high-res displays does weird things, account for it.
-            im = imgData.reshape((int(h*mod), int(w*mod), -1)) # Create our image array in the right shape
-            Image.fromarray(im).save("outputGif/vp_" + str(k).zfill(printNumLength) + ".png") # And pass it to PIL to save it.
+        if (make_gif):
+            imgData = np.frombuffer(plt.gcf().canvas.tostring_rgb(), dtype=np.uint8)
+            w, h = plt.gcf().canvas.get_width_height()
+            mod = np.sqrt(imgData.shape[0]/(3*w*h)) # multi-sampling of pixels on high-res displays does weird things.
+            im = imgData.reshape((int(h*mod), int(w*mod), -1))
+            gifFrames.append(Image.fromarray(im))
+
         plt.gcf().canvas.flush_events() # Make sure the canvas is ready to go for the next step
 
 
@@ -142,7 +159,22 @@ def run(numSteps, dataAssociation, updateMethod, pauseLen, makeGif):
     ######################
     plt.ioff() # Once we've done all time steps, turn off interactive mode
     print("Finished execution") # Nice to know when we're done since sometimes the data moves slowly
-    plt.show() # And just show the last image
+    plt.show(block=False) # And just show the last image
+
+    if (make_gif):
+        # Save into a GIF file that loops forever
+        gifFrames[0].save('video_task3.gif', format='GIF',
+        append_images=gifFrames[1:],
+        save_all=True,
+        duration=numSteps*2*0.1, loop=1)
+
+    fig, ax = plt.subplots()
+    ax.scatter(num_landmarks, prediction_time, label="Prediction CPU Time")
+    ax.scatter(num_landmarks, update_time, label="Update CPU Time")
+    ax.legend(loc="upper right")
+
+    plt.show()
+
 
 ###########################
 # Graphics and Plotting
@@ -190,25 +222,39 @@ def graphics(mu, Sigma, z, robotPath, boundingBox = None):
 ########################################
 # TODO: Implement EKF Motion Prediction 
 ########################################
+# https://www-personal.acfr.usyd.edu.au/nebot/experimental_data/modeling_info/Ute_modeling_info.htm
 def predict(mu, Sigma, u, deltaT, Sigma_u, Q):
     # Vehicle Parameters
-    vehicle_a = 3.78; # [m] # used for the motion model/jacobians
-    vehicle_b = 0.50; # [m] # used for the motion model/jacobians
-    vehicle_L = 2.83; # [m] # used for the motion model/jacobians
-    vehicle_H = 0.76; # [m] # Not used - well, not here.  Technically used to translate the control vector, but that's already been done for us I think?
+    a = 3.78; # [m] # used for the motion model/jacobians
+    b = 0.50; # [m] # used for the motion model/jacobians
+    L = 2.83; # [m] # used for the motion model/jacobians
+    H = 0.76; # [m] # Not used - well, not here.  Technically used to translate the control vector, but that's already been done for us I think?
+    N = (mu.shape[0]-3)//2 # Get number of known landmarks
 
     v_c, alpha = u # Extract useful data out of the controls
     x, y, theta = mu[:3] # Get robot data as useful variables
 
     # TODO: Implement the motion prediction and mean/covariance update equations
+    phi = helpers.minimizedAngle(theta + alpha)
+    mu_prime = np.array([deltaT*(v_c*np.cos(phi) - v_c/L*np.tan(alpha)*(a*np.sin(phi) + b*np.cos(phi))),
+                         deltaT*(v_c*np.sin(phi) + v_c/L*np.tan(alpha)*(a*np.cos(phi) - b*np.sin(phi))),
+                         deltaT * (v_c / L) * np.tan(alpha)])
     
     # Remember - You have an update to the robot covariance, updates to the robot->landmark correlation, but the landmark covariance doesn't change.
     # We also have noise from the linearization (accounted for with G), noise in the controls (Sigma_u) AND additive noise (Q)
+    F = np.block([np.eye(3), np.zeros((3,2*N))])
 
-    # Comment these two lines after finishing your implementation
-    mu_bar = mu
-    Sigma_bar = Sigma
-    
+    G = F.T @ np.array([[1, 0, -deltaT*(v_c*np.sin(phi) + v_c/L*np.tan(alpha)*(a*np.cos(phi) - b*np.sin(phi)))],
+                        [0, 1,  deltaT*(v_c*np.cos(phi) - v_c/L*np.tan(alpha)*(a*np.sin(phi) + b*np.cos(phi)))],
+                        [0, 0, 1]]) @ F
+
+    R = np.array([[-(a*np.sin(phi) + b*np.cos(phi))*np.tan(alpha)/L, -v_c*(a*np.sin(phi) + b*np.cos(phi))*(np.tan(alpha)**2 + 1)/L], 
+                  [(a*np.cos(phi) - b*np.sin(phi))*np.tan(alpha)/L, v_c*(a*np.cos(phi) - b*np.sin(phi))*(np.tan(alpha)**2 + 1)/L], 
+                  [deltaT*np.tan(alpha)/L, deltaT*v_c*(np.tan(alpha)**2 + 1)/L]])
+
+    mu_bar = mu + F.T @ mu_prime
+    Sigma_bar = (G @ Sigma @ G.T) + (F.T @ (R @ Sigma_u @ R.T) @ F) + (F.T @ Q @ F)
+
     return mu_bar, Sigma_bar
 
 ###############################################
@@ -220,11 +266,27 @@ def update(mu_bar, Sigma_bar, association, H, Q, innovation, updateMethod):
         return mu_bar, Sigma_bar # Then we don't update.  Just short-circuit exit.
     if (updateMethod == "seq"): 
         for i in ind: 
-            # TODO: Finish This to update incrementally for each measurement
-            pass # Added to make things run - remove after implementation
+            H_i = H[(2*i):(2*i)+2,:]
+            innovation_i = innovation[2*i:2*i+2]
+            # print(f"H_i shape: {H_i.shape}")
+            # print(f"innovation_i shape is {innovation_i.shape}")
+
+            S_i = H_i @ Sigma_bar @ H_i.T + Q
+            K_i = Sigma_bar @ H_i.T @ np.linalg.inv(S_i)
+
+            # print(f"K_i shape: {K_i.shape}")
+            mu_bar += K_i @ innovation_i
+            Sigma_bar = (np.eye(K_i.shape[0]) - K_i @ H_i) @ Sigma_bar
+        mu_new = mu_bar
+        Sigma_new = Sigma_bar
     elif (updateMethod == "batch"): 
-        # TODO: Finish This to update all measurements of a time step at once
-        pass # Added to make things run - remove after implementation
+        Q = block_diag(*[Q]*len(association))
+        S = H @ Sigma_bar @ H.T + Q
+        K = Sigma_bar @ H.T @ np.linalg.inv(S)
+
+        mu_new = mu_bar + K @ (innovation)
+        Sigma_new = (np.eye(K.shape[0]) - K @ H) @ Sigma_bar
+
     else:
         raise Exception("Unknown update method, '" + updateMethod + "' - it must be 'seq' or 'batch'")
     
@@ -241,9 +303,33 @@ def augmentState(association, measurements, mu, Sigma, Q):
 
     # For each measurement of a new landmark update your state
     for z in measurements:
+        N = (mu.shape[0] - 3) // 2 # Number of landmarks currently in the state
         # Extract info for the measurement
         dist, bearing, sig = z
-        
-        # TODO: Update both the mean (mu_l) and covariance (Sigma_lr, Sigma_rl, Sigma_Ll, Sigma_lL, Sigma_ll) for the new landmark.
-        
+        alpha = helpers.minimizedAngle(bearing+theta)
+
+        # Update both the mean (mu_l) and 
+        # covariance (Sigma_lr, Sigma_rl, Sigma_Ll, Sigma_lL, Sigma_ll) for the new landmark.
+        l_x = dist * np.cos(alpha) + x
+        l_y = dist * np.sin(alpha) + y
+        mu = np.concatenate((mu, [l_x, l_y]))
+
+        G_r = np.array([[1, 0, -dist*np.sin(alpha)], 
+                        [0, 1,  dist*np.cos(alpha)]])
+        G_delta = np.array([[np.cos(alpha), -dist*np.sin(alpha)],
+                            [np.sin(alpha), dist*np.cos(alpha)]])
+
+        Sigma_lr = G_r @ Sigma_rr
+        Sigma_ll = G_r @ Sigma_rr @ G_r.T + G_delta @ Q @ G_delta.T
+
+        Sigma_rL = Sigma[:3, 3:2*N+3]
+        Sigma_LL = Sigma[3:2*N+3, 3:2*N+3]
+        Sigma_lL = G_r @ Sigma_rL
+
+        Sigma = np.block([
+            [Sigma_rr, Sigma_rL, Sigma_lr.T],
+            [Sigma_rL.T, Sigma_LL, Sigma_lL.T],
+            [Sigma_lr, Sigma_lL, Sigma_ll]
+            ])
+
     return mu, Sigma
