@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # ECEN 633: Robotic Localization and Mapping
 
 A graduate-level course at BYU covering fundamental concepts in Simultaneous Localization and Mapping (SLAM), probabilistic robotics, and state estimation techniques.
@@ -26,3 +27,8 @@ Simultaneous Localization and Mapping using Extended Kalman Filters for joint es
 - Experience with real robotics datasets and scenarios
 - MATLAB/Python programming for robotics applications
 - Analysis of algorithm performance and computational complexity
+=======
+# ECEN633 Robotic Localization and Mapping
+
+This is a graduate level class at BYU that covers topics in SLAM, including probabilty topics, occupancy grids, mapping, particle filters, and Kalman filters (EKF/UKF). We briefly covered graph based SLAM at the end of the course
+>>>>>>> caf63b0d6ea6042822b29ac5408da6fa6dbf05ad
